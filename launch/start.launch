@@ -54,10 +54,6 @@
 
     <!-- <node pkg="obstacle_avoidance" type="sonar_to_cloud.py" name="sonar_to_cloud" output="screen" /> -->
     <node pkg="obstacle_avoidance" type="sonar_to_cloud_node" name="sonar_to_cloud" output="screen" />
-    <!-- <node pkg="obstacle_avoidance" type="sonar_to_cloud_node" name="sonar_to_cloud" output="screen">
-        <remap from="sonar_cloud" to="/sonar_cloud_body"/>
-        <remap from="sonar_image" to="/rexrov2/blueview_p900/sonar_image"/>
-    </node> -->
 
     <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
         <rosparam file="$(find obstacle_avoidance)/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
