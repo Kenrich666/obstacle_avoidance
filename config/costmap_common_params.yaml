@@ -1,22 +1,18 @@
 # 机器人形状
 footprint: [[-0.5, -0.4], [-0.5, 0.4], [0.5, 0.4], [0.5, -0.4], [-0.5, -0.4]]
 
-# 障碍物层配置
-obstacle_layer:
+# 定义新的声纳栅格层
+sonar_grid_layer:
   enabled: true
-  observation_sources: sonar_cloud
-  sonar_cloud:
-    data_type: PointCloud2
-    topic: /sonar_cloud_body
-    marking: true
-    clearing: true
-    obstacle_range: 15.0 
-    raytrace_range: 17.0
-    min_obstacle_height: -100.0
-    max_obstacle_height: 100.0
+  map_topic: /projected_sonar_map  # 订阅我们新写的节点话题
+  subscribe_to_updates: true       # 关键：允许地图动态更新
+  track_unknown_space: false       # 我们地图初始化为0(Free)，不处理未知
+  use_maximum: true                #以此来融合多层地图
+  trinary_costmap: false           # 关键：非三元化！保留 0-100 的梯度值
+  lethal_cost_threshold: 60       # 只有达到100才绝对不可通行
 
-# 膨胀层配置
+# 膨胀层配置 (保持不变)
 inflation_layer:
   enabled: true
-  inflation_radius: 0.55
-  cost_scaling_factor: 5.0
+  inflation_radius: 1.0           # 稍微调大一点，给避障更多缓冲
+  cost_scaling_factor: 3.0

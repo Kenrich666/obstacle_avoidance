@@ -3,8 +3,8 @@
     <arg name="bag_filename" default="recording.bag" doc="Name of the output ROS bag file in case record is set to true"/>
     <arg name="use_ned_frame" default="false" doc="If true, uses the NED (North-East-Down) frame conversion. If false, ENU (East-North-Up) will be used per default."/>
 
-    <arg name="x" default="125" doc="X coordinate of the vehicle's initial position (in ENU)"/>
-    <arg name="y" default="25" doc="Y coordinate of the vehicle's initial position (in ENU)"/>
+    <arg name="x" default="120" doc="X coordinate of the vehicle's initial position (in ENU)"/>
+    <arg name="y" default="30" doc="Y coordinate of the vehicle's initial position (in ENU)"/>
     <arg name="z" default="-76" doc="Z coordinate of the vehicle's initial position (in ENU)"/>
     <arg name="yaw" default="-2.83" doc="Yaw angle of the vehicle's initial orientation"/>
 
@@ -32,9 +32,10 @@
         <arg name="gpu_ray" value="true"/>
         <arg name="maxDistance" value="15"/>
         
-        <arg name="fidelity" value="200"/> 
+        <arg name="fidelity" value="300"/> 
         
-        <arg name="raySkips" value="10"/>
+        <arg name="raySkips" value="2"/>
+        <!-- <arg name="raySkips" value="10"/> -->
         <arg name="sonar_image_topic" value="$(arg sonar_image_topic)"/>
         <arg name="sonar_image_raw_topic" value="sonar_image_raw"/>
         <arg name="plotScaler" value="1"/>
@@ -55,6 +56,30 @@
     <!-- <node pkg="obstacle_avoidance" type="sonar_to_cloud.py" name="sonar_to_cloud" output="screen" /> -->
     <node pkg="obstacle_avoidance" type="sonar_to_cloud_node" name="sonar_to_cloud" output="screen" />
 
+
+    <node pkg="obstacle_avoidance" type="sonar_occupancy_mapper.py" name="sonar_occupancy_mapper" output="screen" />
+    <!-- <node pkg="obstacle_avoidance" type="sonar_occupancy_mapper" name="sonar_occupancy_mapper" output="screen">
+        <param name="map_frame" value="world" />
+        <param name="robot_base_frame" value="rexrov2/base_link" />
+        <param name="map_res" value="0.2" />
+        <param name="map_width_m" value="300.0" />
+        <param name="map_height_m" value="300.0" />
+        <param name="map_origin_x" value="-150.0" />
+        <param name="map_origin_y" value="-150.0" />
+        <param name="sonar_max_range" value="16.0" />
+        <param name="sonar_fov_deg" value="95.0" />
+        <param name="hit_increment" value="30.0" />
+        <param name="max_occupancy" value="100.0" />
+        <param name="base_decay_rate" value="5.0" />
+        <param name="velocity_decay_factor" value="1.0" />
+        <param name="dilation_radius" value="1" />
+        <param name="max_tilt_deg" value="3.0" />
+        <remap from="/sonar_cloud_body" to="/sonar_cloud_body" />
+        <remap from="/rexrov2/pose_gt" to="/rexrov2/pose_gt" />
+        <remap from="/projected_sonar_map" to="/projected_sonar_map" />
+    </node> -->
+
+
     <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
         <rosparam file="$(find obstacle_avoidance)/config/costmap_common_params.yaml" command="load" ns="global_costmap" />
         <rosparam file="$(find obstacle_avoidance)/config/costmap_common_params.yaml" command="load" ns="local_costmap" />
@@ -72,7 +97,7 @@
     <node pkg="obstacle_avoidance" type="depth_hold_shim.py" name="depth_hold_shim" output="screen" />
     <node pkg="obstacle_avoidance" type="send_navigation_goal.py" name="goal_sender" output="screen" />
 
-    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find baseline)/rviz/navigation.rviz" />
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find obstacle_avoidance)/rviz/navigation.rviz" />
 
 
     <include file="$(find rexrov2_gazebo)/launch/record.launch">

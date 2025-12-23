@@ -4,13 +4,12 @@ global_costmap:
   
   update_frequency: 5.0
   publish_frequency: 2.0
+  rolling_window: false  # 全局地图通常不滚动，因为我们的 Grid 是固定在 World 的
 
-  rolling_window: true
-  
   width: 300.0
   height: 300.0
   resolution: 0.5
   
   plugins:
-    - {name: obstacle_layer, type: "costmap_2d::ObstacleLayer"}
+    - {name: sonar_grid_layer, type: "costmap_2d::StaticLayer"} # 使用 StaticLayer 加载 Grid
     - {name: inflation_layer, type: "costmap_2d::InflationLayer"}

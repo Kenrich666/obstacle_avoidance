@@ -1,14 +1,15 @@
 local_costmap:
-  global_frame: world
+  global_frame: world   # 也可以是 odom
   robot_base_frame: rexrov2/base_link
   update_frequency: 10.0
   publish_frequency: 5.0
 
-  rolling_window: true
+  rolling_window: true # 局部地图跟随机器人滚动
   width: 30.0
   height: 30.0
   resolution: 0.1
 
   plugins:
-   - {name: obstacle_layer,      type: "costmap_2d::ObstacleLayer"}
+   # 局部地图也可以加载这个 Grid。Costmap 会自动从大地图中截取局部区域。
+   - {name: sonar_grid_layer,      type: "costmap_2d::StaticLayer"}
    - {name: inflation_layer,     type: "costmap_2d::InflationLayer"}
