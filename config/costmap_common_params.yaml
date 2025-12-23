@@ -1,0 +1,22 @@
+# 机器人形状
+footprint: [[-0.5, -0.4], [-0.5, 0.4], [0.5, 0.4], [0.5, -0.4], [-0.5, -0.4]]
+
+# 障碍物层配置
+obstacle_layer:
+  enabled: true
+  observation_sources: sonar_cloud
+  sonar_cloud:
+    data_type: PointCloud2
+    topic: /sonar_cloud_body
+    marking: true
+    clearing: true
+    obstacle_range: 15.0 
+    raytrace_range: 17.0
+    min_obstacle_height: -100.0
+    max_obstacle_height: 100.0
+
+# 膨胀层配置
+inflation_layer:
+  enabled: true
+  inflation_radius: 0.55
+  cost_scaling_factor: 5.0
