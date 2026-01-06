@@ -54,10 +54,11 @@
     </include>
 
     <!-- <node pkg="obstacle_avoidance" type="sonar_to_cloud.py" name="sonar_to_cloud" output="screen" /> -->
-    <node pkg="obstacle_avoidance" type="sonar_to_cloud_node" name="sonar_to_cloud" output="screen" />
+    <!-- <node pkg="obstacle_avoidance" type="sonar_to_cloud_node" name="sonar_to_cloud" output="screen" /> -->
 
 
-    <node pkg="obstacle_avoidance" type="sonar_occupancy_mapper.py" name="sonar_occupancy_mapper" output="screen" />
+    <!-- <node pkg="obstacle_avoidance" type="sonar_occupancy_mapper.py" name="sonar_occupancy_mapper" output="screen" /> -->
+    <node pkg="obstacle_avoidance" type="direct_sonar_mapper.py" name="direct_sonar_mapper" output="screen" />
     <!-- <node pkg="obstacle_avoidance" type="sonar_occupancy_mapper" name="sonar_occupancy_mapper" output="screen">
         <param name="map_frame" value="world" />
         <param name="robot_base_frame" value="rexrov2/base_link" />
