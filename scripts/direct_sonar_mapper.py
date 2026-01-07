@@ -21,8 +21,7 @@ class DirectSonarMapper:
         
         self.map_frame = "world"
         self.robot_base_frame = "rexrov2/base_link"
-        
-        self.override_sonar_frame = "blueview_p900_link"
+        self.override_sonar_frame = "blueview_p900_link" 
 
         # 地图参数
         self.map_res = 0.2
@@ -33,18 +32,30 @@ class DirectSonarMapper:
         self.map_z_level = 0.0
         
         # 声呐过滤参数
-        self.fov_deg = 90.0
         self.min_range = 1.0        
-        self.intensity_threshold = 5 
+        self.intensity_threshold = 10 
         
         # 映射逻辑参数
         self.sonar_max_range = 16.0 
         self.sonar_fov_rad = np.deg2rad(95.0) 
+        self.fov_deg = 90.0
         
         self.hit_increment = 30.0
         self.max_occupancy = 100.0
-        self.base_decay_rate = 5.0
+        
+        # [优化1] 基础衰减率调高，让旧障碍物消失得更快
+        self.base_decay_rate = 5.0  
+        
         self.velocity_decay_factor = 1.0
+        
+        # [优化2] 新增：旋转衰减因子
+        # 旋转时，显著增加清除速度，利用“扫视”动作快速擦除错误障碍物
+        self.angular_decay_factor = 5.0 
+        
+        # [优化3] 新增：最大建图旋转速度 (rad/s)
+        # 超过约 10度/秒 (0.17 rad/s) 时，声纳数据畸变严重，停止写入障碍物
+        self.max_mapping_yaw_rate = 0.15 
+
         self.dilation_radius = 1
         self.max_tilt_deg = 5.0
 
@@ -53,7 +64,9 @@ class DirectSonarMapper:
                            int(self.map_width_m / self.map_res))
         self.occupancy_grid = np.zeros(self.grid_shape, dtype=np.float32)
         
-        self.current_speed = 0.0
+        self.current_linear_speed = 0.0
+        self.current_yaw_rate = 0.0 # 新增：当前旋转速度
+        
         self.last_update_time = None
         self.cached_angles = None
         self.last_beam_count = 0
@@ -69,7 +82,7 @@ class DirectSonarMapper:
         
         self.map_pub = rospy.Publisher(self.map_topic, OccupancyGrid, queue_size=1)
         
-        rospy.loginfo(f"直接声呐建图节点已启动. 强制坐标系: {self.override_sonar_frame}")
+        rospy.loginfo("抗拖影版声呐建图节点已启动.")
 
     def _init_precomputed_tables(self):
         self.range_indices = int(self.sonar_max_range / self.map_res) + 1
@@ -84,13 +97,16 @@ class DirectSonarMapper:
         self.cache_angles = np.arctan2(rel_world_y, rel_world_x)
 
     def odom_callback(self, msg):
+        # 提取线速度
         vx = msg.twist.twist.linear.x
         vy = msg.twist.twist.linear.y
-        self.current_speed = np.sqrt(vx**2 + vy**2)
+        self.current_linear_speed = np.sqrt(vx**2 + vy**2)
+        
+        # [关键] 提取角速度 (Yaw Rate)
+        self.current_yaw_rate = abs(msg.twist.twist.angular.z)
 
     def sonar_callback(self, data):
         current_time = rospy.Time.now()
-        
         if self.last_update_time is None:
             self.last_update_time = current_time
             return 
@@ -99,9 +115,8 @@ class DirectSonarMapper:
         if dt < 0: dt = 0.0
         self.last_update_time = current_time
 
-        # --- 步骤 1: 获取 TF ---
         try:
-            # 检查机器人姿态
+            # 姿态检查
             base_trans = self.tf_buffer.lookup_transform(
                 self.map_frame, self.robot_base_frame, data.header.stamp, rospy.Duration(0.5))
             
@@ -113,15 +128,11 @@ class DirectSonarMapper:
                 self.publish_map(data.header.stamp)
                 return
 
-            # [修正] 使用强制指定的坐标系，而不是 data.header.frame_id
-            target_source_frame = self.override_sonar_frame
-            
             sensor_trans = self.tf_buffer.lookup_transform(
-                self.map_frame, target_source_frame, data.header.stamp, rospy.Duration(0.5))
+                self.map_frame, self.override_sonar_frame, data.header.stamp, rospy.Duration(0.5))
             
         except (tf2.LookupException, tf2.ConnectivityException, tf2.ExtrapolationException) as e:
-            # 降低报错频率，避免刷屏
-            rospy.logwarn_throttle(2.0, f"TF Error ({target_source_frame}): {e}")
+            rospy.logwarn_throttle(2.0, f"TF Error: {e}")
             return
 
         tx = sensor_trans.transform.translation.x
@@ -131,40 +142,50 @@ class DirectSonarMapper:
                           sensor_trans.transform.rotation.z, sensor_trans.transform.rotation.w)
         
         _, _, sensor_yaw = self.get_euler_from_quaternion(qx, qy, qz, qw)
+        
+        # --- 策略 A: 旋转过快时，仅执行衰减，不执行建图 ---
+        # 旋转时TF误差和声呐物理畸变最大，不更新障碍物是消除拖影最有效的手段
+        is_rotating_fast = self.current_yaw_rate > self.max_mapping_yaw_rate
+
+        if not is_rotating_fast:
+            # 只有转得慢的时候，才计算和添加障碍物
+            self.process_obstacles(data, tx, ty, tz, qx, qy, qz, qw)
+            # --- 策略 B: 衰减逻辑只在慢速旋转时执行 ---
+            self.apply_fov_decay_optimized(dt, tx, ty, sensor_yaw)
+        else:
+            # 触发高速旋转保护时的日志
+            # 使用 logwarn 以黄色高亮显示，throttle(1.0) 表示每秒最多打印一次
+            rospy.logwarn_throttle(1.0, 
+                f"[Anti-Blur] 旋转速度过高: {self.current_yaw_rate:.2f} > {self.max_mapping_yaw_rate:.2f} rad/s 已暂停建图。")
+        
+        self.publish_map(data.header.stamp)
+
+    def process_obstacles(self, data, tx, ty, tz, qx, qy, qz, qw):
         rotation_matrix = self.quaternion_to_matrix(qx, qy, qz, qw)
         translation_vec = np.array([tx, ty, tz])
 
-        # --- 步骤 2: 数据解析 ---
         ranges = np.array(data.ranges, dtype=np.float32)
         raw_image = np.frombuffer(data.image.data, dtype=np.uint8)
         n_ranges = len(ranges)
         
-        if n_ranges == 0 or len(raw_image) % n_ranges != 0:
-            return
-            
+        if n_ranges == 0 or len(raw_image) % n_ranges != 0: return
         n_beams = int(len(raw_image) / n_ranges)
         
         try:
             matrix_data = raw_image.reshape((n_ranges, n_beams))
-        except ValueError:
-            return
+        except ValueError: return
 
         if self.cached_angles is None or n_beams != self.last_beam_count:
             fov_rad = np.deg2rad(self.fov_deg)
-            # 注意：根据安装方式，如果图像是左右颠倒的，这里可能需要调整符号
             self.cached_angles = np.linspace(fov_rad/2, -fov_rad/2, n_beams)
             self.last_beam_count = n_beams
         angles = self.cached_angles
 
-        # --- 步骤 3: 提取障碍物点 ---
         range_mask = ranges > self.min_range
         valid_matrix = matrix_data[range_mask, :]
         valid_ranges = ranges[range_mask]
         
-        if valid_matrix.size == 0:
-            self.apply_fov_decay_optimized(dt, tx, ty, sensor_yaw)
-            self.publish_map(data.header.stamp)
-            return
+        if valid_matrix.size == 0: return
 
         intensity_mask = valid_matrix > self.intensity_threshold
         
@@ -173,17 +194,13 @@ class DirectSonarMapper:
             final_r = R_grid[intensity_mask]
             final_theta = Theta_grid[intensity_mask]
             
-            # 极坐标 -> 传感器坐标 (X向前, Y向左)
             X_sensor = final_r * np.cos(final_theta)
             Y_sensor = final_r * np.sin(final_theta)
             Z_sensor = np.zeros_like(X_sensor)
             
             points_sensor = np.column_stack((X_sensor, Y_sensor, Z_sensor))
-            
-            # 传感器坐标 -> 世界坐标
             points_world = np.dot(points_sensor, rotation_matrix.T) + translation_vec
             
-            # --- 步骤 4: 更新栅格 ---
             j_indices = ((points_world[:, 0] - self.map_origin_x) / self.map_res).astype(int)
             i_indices = ((points_world[:, 1] - self.map_origin_y) / self.map_res).astype(int)
             
@@ -201,10 +218,6 @@ class DirectSonarMapper:
                 self.occupancy_grid[dilated_hits] += self.hit_increment
                 self.occupancy_grid[dilated_hits] = np.clip(self.occupancy_grid[dilated_hits], 0, self.max_occupancy)
 
-        # --- 步骤 5: 衰减更新 ---
-        self.apply_fov_decay_optimized(dt, tx, ty, sensor_yaw)
-        self.publish_map(data.header.stamp)
-
     def apply_fov_decay_optimized(self, dt, sensor_x, sensor_y, sensor_yaw):
         if dt <= 0: return
 
@@ -212,31 +225,18 @@ class DirectSonarMapper:
         cy = int((sensor_y - self.map_origin_y) / self.map_res)
 
         pad = self.range_indices
-        min_map_x = cx - pad
-        max_map_x = cx + pad + 1
-        min_map_y = cy - pad
-        max_map_y = cy + pad + 1
+        min_map_x = max(0, cx - pad)
+        max_map_x = min(self.grid_shape[1], cx + pad + 1)
+        min_map_y = max(0, cy - pad)
+        max_map_y = min(self.grid_shape[0], cy + pad + 1)
         
-        cache_min_x, cache_max_x = 0, self.cache_grid_x.shape[1]
-        cache_min_y, cache_max_y = 0, self.cache_grid_y.shape[0]
+        if min_map_x >= max_map_x or min_map_y >= max_map_y: return
 
-        if min_map_x < 0:
-            cache_min_x = -min_map_x
-            min_map_x = 0
-        if min_map_y < 0:
-            cache_min_y = -min_map_y
-            min_map_y = 0
-        if max_map_x > self.grid_shape[1]:
-            diff = max_map_x - self.grid_shape[1]
-            cache_max_x -= diff
-            max_map_x = self.grid_shape[1]
-        if max_map_y > self.grid_shape[0]:
-            diff = max_map_y - self.grid_shape[0]
-            cache_max_y -= diff
-            max_map_y = self.grid_shape[0]
-
-        if min_map_x >= max_map_x or min_map_y >= max_map_y:
-            return
+        # 计算对应的 Cache 索引
+        cache_min_x = max(0, -(cx - pad))
+        cache_max_x = cache_min_x + (max_map_x - min_map_x)
+        cache_min_y = max(0, -(cy - pad))
+        cache_max_y = cache_min_y + (max_map_y - min_map_y)
 
         roi_dist_sq = self.cache_dist_sq[cache_min_y:cache_max_y, cache_min_x:cache_max_x]
         roi_angles = self.cache_angles[cache_min_y:cache_max_y, cache_min_x:cache_max_x]
@@ -244,13 +244,22 @@ class DirectSonarMapper:
         delta_angle = roi_angles - sensor_yaw
         delta_angle = (delta_angle + np.pi) % (2 * np.pi) - np.pi
 
+        # [策略 C] 在衰减时，视场角稍微放宽一点点 (FOV + 2度)
+        # 这样可以在旋转时更积极地清除边缘的“幽灵点”
+        decay_fov_rad = self.sonar_fov_rad + np.deg2rad(2.0)
         decay_max_range = self.sonar_max_range + 1.0
-        decay_fov_rad = self.sonar_fov_rad + np.deg2rad(5.0)
         
         fov_mask = (roi_dist_sq < decay_max_range**2) & \
                    (np.abs(delta_angle) < decay_fov_rad / 2.0)
 
-        decay_amount = (self.base_decay_rate + self.current_speed * self.velocity_decay_factor) * dt
+        # [核心优化] 动态计算衰减量
+        # Total Decay = 基础 + (线速度 * 因子) + (角速度 * 因子)
+        # 旋转得越快，清除力度越大！
+        dynamic_decay = self.base_decay_rate + \
+                        (self.current_linear_speed * self.velocity_decay_factor) + \
+                        (self.current_yaw_rate * self.angular_decay_factor)
+                        
+        decay_amount = dynamic_decay * dt
         
         roi_grid = self.occupancy_grid[min_map_y:max_map_y, min_map_x:max_map_x]
         roi_grid[fov_mask] -= decay_amount

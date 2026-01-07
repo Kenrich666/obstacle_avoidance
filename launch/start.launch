@@ -113,4 +113,6 @@ catkin_make
 source devel/setup.bash
 
 roslaunch obstacle_avoidance start.launch
+
+rosrun rqt_reconfigure rqt_reconfigure
  -->
