@@ -1,0 +1,9 @@
+<launch>
+    <arg name="config_file" default="$(find obstacle_avoidance)/config/planner_params.yaml"/>
+
+    <node pkg="obstacle_avoidance" type="custom_dwa_planner_node" name="custom_dwa_planner" output="screen" respawn="true">
+        
+        <rosparam command="load" file="$(arg config_file)"/>
+
+        </node>
+</launch>

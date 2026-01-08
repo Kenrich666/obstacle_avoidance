@@ -103,8 +103,10 @@
         <remap from="cmd_vel" to="/null/cmd_vel"/>
     </node>
 
-    <node pkg="obstacle_avoidance" type="custom_dwa_planner.py" name="custom_dwa_planner" output="screen" />
+    <!-- <node pkg="obstacle_avoidance" type="custom_dwa_planner.py" name="custom_dwa_planner" output="screen" /> -->
 
+    <include file="$(find obstacle_avoidance)/launch/dwa_planner.launch">
+    </include>
     
     <node pkg="obstacle_avoidance" type="depth_hold_shim.py" name="depth_hold_shim" output="screen" />
     <node pkg="obstacle_avoidance" type="send_navigation_goal.py" name="goal_sender" output="screen" />
@@ -127,5 +129,13 @@ roslaunch obstacle_avoidance start.launch
 
 rosrun rqt_reconfigure rqt_reconfigure
 
-rosrun obstacle_avoidance scripts/custom_dwa_planner.py
+rosrun obstacle_avoidance scripts/dwa_monitor.py
+
+rostopic echo /rexrov2/cmd_vel_move_base
+
+rostopic echo /null/cmd_vel
+
+rostopic hz /rexrov2/cmd_vel_move_base
+
+rostopic hz /null/cmd_vel
  -->

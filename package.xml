@@ -4,7 +4,7 @@
   <version>0.0.0</version>
   <description>The obstacle_avoidance package</description>
 
-  <maintainer email="kenrich@todo.todo">kenrich</maintainer>
+  <maintainer email="zhanpeiliang66@gmail.com">kenrich</maintainer>
   <license>TODO</license>
 
   <buildtool_depend>catkin</buildtool_depend>

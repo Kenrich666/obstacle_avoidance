@@ -40,7 +40,7 @@ class DirectSonarMapper:
         self.sonar_fov_rad = np.deg2rad(95.0) 
         self.fov_deg = 90.0
         
-        self.hit_increment = 30.0
+        self.hit_increment = 50.0
         self.max_occupancy = 100.0
         
         # [优化1] 基础衰减率调高，让旧障碍物消失得更快
@@ -54,7 +54,7 @@ class DirectSonarMapper:
         
         # [优化3] 新增：最大建图旋转速度 (rad/s)
         # 超过约 10度/秒 (0.17 rad/s) 时，声纳数据畸变严重，停止写入障碍物
-        self.max_mapping_yaw_rate = 0.15 
+        self.max_mapping_yaw_rate = 0.05 
 
         self.dilation_radius = 1
         self.max_tilt_deg = 5.0
